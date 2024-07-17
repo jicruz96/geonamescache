@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 # Map country name variants to the ones used in GeoNames.
-country_names = {
+country_names: dict[str, str] = {
     'Bolivia (Plurinational State of)': 'Bolivia',
     'Bosnia-Herzegovina': 'Bosnia and Herzegovina',
     'Brunei Darussalam': 'Brunei',
