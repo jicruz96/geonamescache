@@ -5,9 +5,10 @@ __author__ = 'Ramiro Gómez'
 __license__ = 'MIT'
 
 
+import functools
 import json
 import os
-from typing import Any, Dict, List, Mapping, Optional, Tuple, TypeVar
+from typing import Any, Dict, List, Mapping, Tuple, TypeVar
 
 from . import geonamesdata
 from .types import (City, CitySearchAttribute, Continent, ContinentCode,
@@ -20,15 +21,38 @@ TDict = TypeVar('TDict', bound=Mapping[str, Any])
 class GeonamesCache:
 
     us_states: Dict[USStateCode, USState] = geonamesdata.us_states
-    continents: Optional[Dict[ContinentCode, Continent]] = None
-    countries: Optional[Dict[ISOStr, Country]] = None
-    cities: Optional[Dict[GeoNameIdStr, City]] = None
-    cities_items: Optional[List[Tuple[GeoNameIdStr, City]]] = None
-    cities_by_names: Dict[str, List[Dict[GeoNameIdStr, City]]] = {}
-    us_counties: Optional[List[USCounty]] = None
 
     def __init__(self, min_city_population: int = 15000):
         self.min_city_population = min_city_population
+
+    @functools.cached_property
+    def continents(self) -> Dict[ContinentCode, Continent]:
+        return self._load_data('continents.json')
+
+    @functools.cached_property
+    def countries(self) -> Dict[ISOStr, Country]:
+        return self._load_data('countries.json')
+
+    @functools.cached_property
+    def cities(self) -> Dict[GeoNameIdStr, City]:
+        return self._load_data(f'cities{self.min_city_population}.json')
+
+    @functools.cached_property
+    def us_counties(self) -> List[USCounty]:
+        return self._load_data('us_counties.json')
+
+    @functools.cached_property
+    def cities_items(self) -> List[Tuple[GeoNameIdStr, City]]:
+        return list(self.cities.items())
+
+    @functools.cached_property
+    def cities_by_names(self) -> Dict[str, List[Dict[GeoNameIdStr, City]]]:
+        cities_by_names: Dict[str, List[Dict[GeoNameIdStr, City]]] = {}
+        for gid, city in self.cities_items:
+            if city['name'] not in cities_by_names:
+                cities_by_names[city['name']] = []
+            cities_by_names[city['name']].append({gid: city})
+        return cities_by_names
 
     def get_dataset_by_key(
         self, dataset: Dict[str, TDict], key: str
@@ -36,14 +60,9 @@ class GeonamesCache:
         return dict((d[key], d) for c, d in list(dataset.items()))
 
     def get_continents(self) -> Dict[ContinentCode, Continent]:
-        if self.continents is None:
-            self.continents = self._load_data(
-                self.continents, 'continents.json')
         return self.continents
 
     def get_countries(self) -> Dict[ISOStr, Country]:
-        if self.countries is None:
-            self.countries = self._load_data(self.countries, 'countries.json')
         return self.countries
 
     def get_us_states(self) -> Dict[USStateCode, USState]:
@@ -57,9 +76,6 @@ class GeonamesCache:
 
     def get_cities(self) -> Dict[GeoNameIdStr, City]:
         """Get a dictionary of cities keyed by geonameid."""
-
-        if self.cities is None:
-            self.cities = self._load_data(self.cities, f'cities{self.min_city_population}.json')
         return self.cities
 
     def get_cities_by_name(self, name: str) -> List[Dict[GeoNameIdStr, City]]:
@@ -67,17 +83,9 @@ class GeonamesCache:
 
         City names cannot be used as keys, as they are not unique.
         """
-
-        if name not in self.cities_by_names:
-            if self.cities_items is None:
-                self.cities_items = list(self.get_cities().items())
-            self.cities_by_names[name] = [dict({gid: city})
-                for gid, city in self.cities_items if city['name'] == name]
-        return self.cities_by_names[name]
+        return self.cities_by_names.get(name, [])
 
     def get_us_counties(self):
-        if self.us_counties is None:
-            self.us_counties = self._load_data(self.us_counties, 'us_counties.json')
         return self.us_counties
 
     def search_cities(
@@ -111,8 +119,6 @@ class GeonamesCache:
         return results
 
     @staticmethod
-    def _load_data(datadict: Optional[Dict[str, Any]], datafile: str) -> Dict[str, Any]:
-        if datadict is None:
-            with open(os.path.join(os.path.dirname(__file__), 'data', datafile)) as f:
-                datadict = json.load(f)
-        return datadict
+    def _load_data(datafile: str) -> Any:
+        with open(os.path.join(os.path.dirname(__file__), 'data', datafile)) as f:
+            return json.load(f)
